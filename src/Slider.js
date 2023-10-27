@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { interval, from, merge, timer } from 'rxjs';
-import { mergeMap, map, takeWhile, tap, switchMap } from 'rxjs/operators';
 import axios from 'axios';
+import { interval, from } from 'rxjs';
+import { mergeMap, map } from 'rxjs/operators';
 
-const Slider = ({ displayTime, slidesToShow, apiUrl }) => {
+const Slider = ({ displayTime, slidesToShow, slideDataApiUrl }) => {
   const [slides, setSlides] = useState([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   useEffect(() => {
-    // Function to fetch slides from the API
+    // Fetch slide data from the provided API URL
     const fetchSlides = async () => {
       try {
-        const response = await axios.get(apiUrl);
+        const response = await axios.get(slideDataApiUrl);
         setSlides(response.data);
       } catch (error) {
         console.error('Failed to fetch slides:', error);
@@ -19,29 +19,35 @@ const Slider = ({ displayTime, slidesToShow, apiUrl }) => {
     };
 
     fetchSlides();
+  }, [slideDataApiUrl]);
 
-    // Set up an interval to automatically advance the slides
-    const slideInterval = interval(displayTime).pipe(
-      takeWhile(() => true), // Continue indefinitely
-      tap(() => {
-        // Move to the next slide index
-        setCurrentSlideIndex((prevIndex) => (prevIndex + 1) % slides.length);
-      })
+  useEffect(() => {
+    const slide$ = interval(displayTime).pipe(
+      mergeMap(() => from(slides)),
+      map((slide, index) => {
+        const priority = slide.priority || 1;
+        const repeats = Math.floor(priority);
+        const lastPriority = priority - repeats;
+        const repeatSlides = Array(repeats).fill(slide);
+        return [...repeatSlides, { ...slide, priority: lastPriority }];
+      }),
+      mergeMap((slide) => from(slide))
     );
 
-    // Start the slide interval
-    const subscription = slideInterval.subscribe();
+    const subscription = slide$.subscribe(() => {
+      setCurrentSlideIndex((prevIndex) => (prevIndex + 1) % slides.length);
+    });
 
     return () => {
-      subscription.unsubscribe(); // Clean up the subscription on component unmount
+      subscription.unsubscribe();
     };
-  }, [displayTime, apiUrl, slides.length]);
+  }, [slides, displayTime]);
 
   return (
     <div className="slider">
-      {slides.slice(currentSlideIndex, currentSlideIndex + slidesToShow).map((slide) => (
+      {slides.slice(currentSlideIndex, currentSlideIndex + slidesToShow).map((slide, index) => (
         <div key={slide.id} className="slide">
-          <a href={slide.url} target="_blank" rel="noopener noreferrer">
+          <a href={slide.url}>
             <img src={slide.image} alt="Slide" />
           </a>
         </div>
@@ -51,3 +57,4 @@ const Slider = ({ displayTime, slidesToShow, apiUrl }) => {
 };
 
 export default Slider;
+
